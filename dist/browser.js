@@ -80,7 +80,7 @@
       }
       let index = middlewares.findIndex((m) => typeof m != "function");
       if (index >= 0) {
-        throw metroError("metro.client: middlewares must be a function or an array of functions " + metroURL + "client/invalid-middlewares-value/", middlewares[index]);
+        throw metroError("metro.client: middlewares must be a function or an array of functions " + metroURL + "client/invalid-middlewares/", middlewares[index]);
       }
       if (!Array.isArray(this.#options.middlewares)) {
         this.#options.middlewares = [];
@@ -97,13 +97,13 @@
     fetch(req, options) {
       req = request(req, options);
       if (!req.url) {
-        throw metroError("metro.client." + req.method.toLowerCase() + ": Missing url parameter " + metroURL + "client/missing-url-param/", req);
+        throw metroError("metro.client." + req.method.toLowerCase() + ": Missing url parameter " + metroURL + "client/fetch-missing-url/", req);
       }
       if (!options) {
         options = {};
       }
-      if (!(typeof options === "object") || Array.isArray(options) || options instanceof String) {
-        throw metroError("metro.client.fetch: Options is not an object");
+      if (!(typeof options === "object") || options instanceof String) {
+        throw metroError("metro.client.fetch: Invalid options parameter " + metroURL + "client/fetch-invalid-options/", options);
       }
       const metrofetch = async function browserFetch(req2) {
         if (req2[Symbol.metroProxy]) {
@@ -210,13 +210,16 @@
         Object.assign(requestParams, getRequestParams(option, requestParams));
       }
     }
+    let r = new Request(requestParams.url, requestParams);
     let data = requestParams.body;
     if (data) {
       if (typeof data == "object" && !(data instanceof String) && !(data instanceof ReadableStream) && !(data instanceof Blob) && !(data instanceof ArrayBuffer) && !(data instanceof DataView) && !(data instanceof FormData) && !(data instanceof URLSearchParams) && (typeof TypedArray == "undefined" || !(data instanceof TypedArray))) {
-        requestParams.body = JSON.stringify(data);
+        if (typeof data.toString == "function") {
+          requestParams.body = data.toString({ headers: r.headers });
+          r = new Request(requestParams.url, requestParams);
+        }
       }
     }
-    let r = new Request(requestParams.url, requestParams);
     Object.freeze(r);
     return new Proxy(r, {
       get(target, prop, receiver) {
@@ -234,8 +237,6 @@
               }
               return request(target, ...options2);
             };
-            break;
-          case "body":
             break;
           case "data":
             return data;
@@ -296,6 +297,9 @@
     let data = void 0;
     if (responseParams.body) {
       data = responseParams.body;
+    }
+    if ([101, 204, 205, 304].includes(responseParams.status)) {
+      responseParams.body = null;
     }
     let r = new Response(responseParams.body, responseParams);
     Object.freeze(r);
@@ -361,27 +365,31 @@
         appendSearchParams(u, option);
       } else if (option && typeof option == "object") {
         for (let param in option) {
-          if (param == "search") {
-            if (typeof option.search == "function") {
-              option.search(u.search, u);
-            } else {
-              u.search = new URLSearchParams(option.search);
-            }
-          } else if (param == "searchParams") {
-            appendSearchParams(u, option.searchParams);
-          } else {
-            if (!validParams.includes(param)) {
-              throw metroError("metro.url: unknown url parameter " + metroURL + "url/unknown-param-name/", param);
-            }
-            if (typeof option[param] == "function") {
-              option[param](u[param], u);
-            } else if (typeof option[param] == "string" || option[param] instanceof String || typeof option[param] == "number" || option[param] instanceof Number || typeof option[param] == "boolean" || option[param] instanceof Boolean) {
-              u[param] = "" + option[param];
-            } else if (typeof option[param] == "object" && option[param].toString) {
-              u[param] = option[param].toString();
-            } else {
-              throw metroError("metro.url: unsupported value for " + param + " " + metroURL + "url/unsupported-param-value/", options[param]);
-            }
+          switch (param) {
+            case "search":
+              if (typeof option.search == "function") {
+                option.search(u.search, u);
+              } else {
+                u.search = new URLSearchParams(option.search);
+              }
+              break;
+            case "searchParams":
+              appendSearchParams(u, option.searchParams);
+              break;
+            default:
+              if (!validParams.includes(param)) {
+                throw metroError("metro.url: unknown url parameter " + metroURL + "url/unknown-param-name/", param);
+              }
+              if (typeof option[param] == "function") {
+                option[param](u[param], u);
+              } else if (typeof option[param] == "string" || option[param] instanceof String || typeof option[param] == "number" || option[param] instanceof Number || typeof option[param] == "boolean" || option[param] instanceof Boolean) {
+                u[param] = "" + option[param];
+              } else if (typeof option[param] == "object" && option[param].toString) {
+                u[param] = option[param].toString();
+              } else {
+                throw metroError("metro.url: unsupported value for " + param + " " + metroURL + "url/unsupported-param-value/", options[param]);
+              }
+              break;
           }
         }
       } else {
@@ -403,6 +411,12 @@
               return url(target, ...options2);
             };
             break;
+          case "filename":
+            return target.pathname.split("/").pop();
+            break;
+          case "folderpath":
+            return target.pathname.substring(0, target.pathname.lastIndexOf("\\") + 1);
+            break;
         }
         if (target[prop] instanceof Function) {
           return target[prop].bind(target);
@@ -414,6 +428,9 @@
   function formdata(...options) {
     var params2 = new FormData();
     for (let option of options) {
+      if (option instanceof HTMLFormElement) {
+        option = new FormData(option);
+      }
       if (option instanceof FormData) {
         for (let entry of option.entries()) {
           params2.append(entry[0], entry[1]);
@@ -429,7 +446,7 @@
           }
         }
       } else {
-        throw new metroError("metro.formdata: unknown option type, only FormData or Object supported", option);
+        throw new metroError("metro.formdata: unknown option type " + metroURL + "formdata/unknown-option-value/", option);
       }
     }
     Object.freeze(params2);
