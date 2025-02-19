@@ -3,6 +3,8 @@ import { assert, Required, validURL } from '@muze-nl/assert'
 import {tokenStore} from './tokenstore.mjs'
 
 /**
+ * FIXME: refresh_token fails - token not passed correctly
+ * 
  * oauth2mw returns a middleware for @muze-nl/metro that
  * implements oauth2 authentication in the metro client.
  * it supports the authorization_code, refresh_token and
@@ -58,7 +60,6 @@ export default function oauth2mw(options)
 		}
 	})
 
-	// FIXME: for oidc, we need to send the id_token instead of access token...
 	for (let option in oauth2) {
 		switch(option) {
 			case 'access_token':
@@ -277,13 +278,14 @@ export default function oauth2mw(options)
 			search.response_mode = oauth2.response_mode
 		}
 		options.state.set(search.state)
-		if (oauth2.client_secret) {
-			search.client_secret = oauth2.client_secret
-		}
 		if (oauth2.code_verifier) { //PKCE
+			options.tokens.set('code_verifier', oauth2.code_verifier)
 			search.code_challenge = await generateCodeChallenge(oauth2.code_verifier)
 			search.code_challenge_method = 'S256'
+		} else if (oauth2.client_secret) {
+			search.client_secret = oauth2.client_secret
 		}
+
 		if (oauth2.scope) {
 			search.scope = oauth2.scope
 		}
@@ -312,10 +314,10 @@ export default function oauth2mw(options)
 			grant_type: grant_type || oauth2.grant_type,
 			client_id:  oauth2.client_id
 		}
-		if (oauth2.code_verifier) { //PKCE
-			params.code_verifier = oauth2.code_verifier
-		}
-		if (oauth2.client_secret) {
+		const code_verifier = options.tokens.get('code_verifier') //PKCE
+		if (code_verifier) {
+			params.code_verifier = code_verifier
+		} else if (oauth2.client_secret) {
 			params.client_secret = oauth2.client_secret
 		}
 		if (oauth2.scope) {
@@ -371,16 +373,23 @@ export function getExpires(duration)
 	throw new TypeError('Unknown expires type '+duration);
 }
 
-
 /**
  * returns a PKCE code_verifier, as a uint8array
  * pass it to base64url_encode() to get a string
+ * https://datatracker.ietf.org/doc/html/rfc7636#section-4
  */
 export function	generateCodeVerifier(size=64)
 {
-	const code_verifier = new Uint8Array(size)
-	globalThis.crypto.getRandomValues(code_verifier)
-	return base64url_encode(code_verifier)
+	size = Math.min(43, Math.max(128, size))
+	const allowed = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
+		+ '-._~'
+	const random = new Uint8Array(size)
+	globalThis.crypto.getRandomValues(random)
+	const code_verifier = Array.from(random).map(b => {
+		let c = allowed[b%allowed.length]
+		return c
+	}).join('')
+	return code_verifier
 }
 
 /**
