@@ -1061,7 +1061,8 @@
         options.tokens.set("code_verifier", oauth22.code_verifier);
         search.code_challenge = await generateCodeChallenge(oauth22.code_verifier);
         search.code_challenge_method = "S256";
-      } else if (oauth22.client_secret) {
+      }
+      if (oauth22.client_secret) {
         search.client_secret = oauth22.client_secret;
       }
       if (oauth22.scope) {
@@ -1088,7 +1089,8 @@
       const code_verifier = options.tokens.get("code_verifier");
       if (code_verifier) {
         params2.code_verifier = code_verifier;
-      } else if (oauth22.client_secret) {
+      }
+      if (oauth22.client_secret) {
         params2.client_secret = oauth22.client_secret;
       }
       if (oauth22.scope) {
