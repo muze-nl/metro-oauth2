@@ -282,7 +282,8 @@ export default function oauth2mw(options)
 			options.tokens.set('code_verifier', oauth2.code_verifier)
 			search.code_challenge = await generateCodeChallenge(oauth2.code_verifier)
 			search.code_challenge_method = 'S256'
-		} else if (oauth2.client_secret) {
+		}
+		if (oauth2.client_secret) {
 			search.client_secret = oauth2.client_secret
 		}
 
@@ -317,7 +318,8 @@ export default function oauth2mw(options)
 		const code_verifier = options.tokens.get('code_verifier') //PKCE
 		if (code_verifier) {
 			params.code_verifier = code_verifier
-		} else if (oauth2.client_secret) {
+		}
+		if (oauth2.client_secret) {
 			params.client_secret = oauth2.client_secret
 		}
 		if (oauth2.scope) {
